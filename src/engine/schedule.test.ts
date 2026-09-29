@@ -1,0 +1,125 @@
+import { describe, expect, it } from 'vitest'
+import type { Category, WorkScale } from '@/types'
+import {
+  addDays,
+  blockForScaleAt,
+  categoryForDate,
+  cycleLength,
+  daysBetween,
+  endOfMonth,
+  monthMatrix,
+  pickScale,
+  statsForRange
+} from './schedule'
+
+const trabalho: Category = { id: 'cat-trab', name: 'Trabalho', kind: 'work', color: '#22c55e', hoursPerDay: 8 }
+const folga: Category = { id: 'cat-folga', name: 'Folga', kind: 'off', color: '#38bdf8', hoursPerDay: 0 }
+const ferias: Category = { id: 'cat-ferias', name: 'Férias', kind: 'other', color: '#f59e0b', hoursPerDay: 0 }
+const categories = [trabalho, folga, ferias]
+
+function scale(startDate: string, blocks: { categoryId: string; days: number }[], id = 'esc-1'): WorkScale {
+  return { id, name: id, startDate, pattern: blocks, active: true, createdAt: 1 }
+}
+
+const s5x2 = scale('2026-01-05', [
+  { categoryId: trabalho.id, days: 5 },
+  { categoryId: folga.id, days: 2 }
+])
+
+const s12x36 = scale('2026-01-01', [
+  { categoryId: trabalho.id, days: 12 },
+  { categoryId: folga.id, days: 36 }
+])
+
+describe('datas', () => {
+  it('daysBetween é exato entre meses e anos', () => {
+    expect(daysBetween('2026-01-05', '2026-01-05')).toBe(0)
+    expect(daysBetween('2026-01-05', '2026-02-01')).toBe(27)
+    expect(daysBetween('2025-12-31', '2026-01-01')).toBe(1)
+    expect(daysBetween('2026-02-28', '2026-03-01')).toBe(1)
+    expect(daysBetween('2028-02-28', '2028-03-01')).toBe(2) // ano bissexto
+  })
+
+  it('addDays atravessa fronteiras de mês/ano', () => {
+    expect(addDays('2026-12-31', 1)).toBe('2027-01-01')
+    expect(addDays('2026-03-01', -1)).toBe('2026-02-28')
+  })
+})
+
+describe('motor de padrão', () => {
+  it('5×2: dias 0-4 trabalho, 5-6 folga, ciclo reinicia', () => {
+    expect(categoryForDate('2026-01-05', [s5x2], categories).category?.id).toBe(trabalho.id)
+    expect(categoryForDate('2026-01-09', [s5x2], categories).category?.id).toBe(trabalho.id)
+    expect(categoryForDate('2026-01-10', [s5x2], categories).category?.id).toBe(folga.id)
+    expect(categoryForDate('2026-01-11', [s5x2], categories).category?.id).toBe(folga.id)
+    expect(categoryForDate('2026-01-12', [s5x2], categories).category?.id).toBe(trabalho.id)
+  })
+
+  it('12×36 respeita o ciclo de 48 dias', () => {
+    for (let d = 0; d < 12; d++) {
+      expect(categoryForDate(addDays('2026-01-01', d), [s12x36], categories).category?.id).toBe(trabalho.id)
+    }
+    expect(categoryForDate('2026-01-13', [s12x36], categories).category?.id).toBe(folga.id)
+    expect(categoryForDate('2026-02-17', [s12x36], categories).category?.id).toBe(folga.id) // último dia de folga (offset 47)
+    expect(categoryForDate('2026-02-18', [s12x36], categories).category?.id).toBe(trabalho.id) // ciclo reinicia (offset 48)
+    expect(cycleLength(s12x36.pattern)).toBe(48)
+  })
+
+  it('data anterior ao início não tem categoria', () => {
+    const info = categoryForDate('2026-01-04', [s5x2], categories)
+    expect(info.category).toBeNull()
+    expect(info.scale).toBeNull()
+    expect(blockForScaleAt(s5x2, '2026-01-04')).toBeNull()
+  })
+
+  it('pickScale escolhe a escala vigente mais recente', () => {
+    const nova = scale('2026-03-01', [{ categoryId: ferias.id, days: 30 }], 'esc-2')
+    const scales = [s5x2, nova]
+    expect(pickScale(scales, '2026-02-28')?.id).toBe('esc-1')
+    expect(pickScale(scales, '2026-03-15')?.id).toBe('esc-2')
+    expect(pickScale(scales, '2026-03-15') && categoryForDate('2026-03-15', scales, categories).category?.id).toBe(ferias.id)
+  })
+
+  it('escala inativa ou inválida é ignorada', () => {
+    const inativa = { ...s5x2, id: 'esc-in', active: false }
+    const invalida: WorkScale = { id: 'esc-inv', name: 'x', startDate: '2026-01-01', pattern: [], active: true, createdAt: 0 }
+    expect(categoryForDate('2026-01-06', [inativa, invalida], categories).category).toBeNull()
+  })
+})
+
+describe('grade do mês', () => {
+  it('setembro/2026 começa na semana do dia 1 e cobre todo o mês', () => {
+    const weeks = monthMatrix(2026, 9)
+    const flat = weeks.flat()
+    expect(flat[0].date).toBe('2026-08-30') // domingo
+    expect(flat.filter((c) => c.inMonth).length).toBe(30)
+    expect(flat.filter((c) => c.inMonth)[0].date).toBe('2026-09-01')
+    expect(flat[flat.length - 1].date >= endOfMonth(2026, 9)).toBe(true)
+    expect(weeks.every((w) => w.length === 7)).toBe(true)
+  })
+
+  it('fevereiro de ano comum gera 4 semanas', () => {
+    const weeks = monthMatrix(2026, 2)
+    expect(weeks.length).toBeGreaterThanOrEqual(4)
+    expect(weeks.flat().filter((c) => c.inMonth).length).toBe(28)
+  })
+})
+
+describe('estatísticas', () => {
+  it('soma dias e horas no intervalo de um mês', () => {
+    const stats = statsForRange('2026-09-01', '2026-09-30', [s5x2], categories)
+    expect(stats.totalDays).toBe(30)
+    const total = stats.counts.reduce((s, c) => s + c.days, 0)
+    expect(total).toBe(30)
+    const trab = stats.counts.find((c) => c.category.id === trabalho.id)
+    expect(trab?.hours).toBe((trab?.days ?? 0) * 8)
+  })
+
+  it('dia sem escala conta como não classificado', () => {
+    // escala começa em 2026-01-05; 03 e 04 ficam antes do início
+    const stats = statsForRange('2026-01-03', '2026-01-06', [s5x2], categories)
+    expect(stats.totalDays).toBe(4)
+    const classified = stats.counts.reduce((s, c) => s + c.days, 0)
+    expect(stats.totalDays - classified).toBe(2) // 03 e 04 de janeiro
+  })
+})
