@@ -8,6 +8,7 @@ import { monthLabel } from '@/utils/date'
 import CalendarMonth from '@/components/CalendarMonth.vue'
 import LegendBar from '@/components/LegendBar.vue'
 import DayDetailSheet from '@/components/DayDetailSheet.vue'
+import InstallBanner from '@/components/InstallBanner.vue'
 
 const store = useEscalaStore()
 const { exportCalendar } = useShare()
@@ -59,6 +60,8 @@ async function onExport() {
 
 <template>
   <div>
+    <InstallBanner />
+
     <div v-if="noScales" class="card empty">
       <h2>Bem-vindo 👋</h2>
       <p class="muted">Você ainda não cadastrou nenhuma escala. Crie a sua primeira para ver o calendário preenchido automaticamente.</p>
