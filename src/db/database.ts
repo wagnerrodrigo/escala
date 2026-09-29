@@ -1,16 +1,18 @@
 import Dexie, { type Table } from 'dexie'
-import type { Category, WorkScale } from '@/types'
+import type { Category, Punch, WorkScale } from '@/types'
 import { uid } from '@/engine/schedule'
 
 export interface SettingsRow {
   id: string
   notificationsEnabled: boolean
   onboardingDone: boolean
+  breakMinutes: number
 }
 
 class EscalaDB extends Dexie {
   categories!: Table<Category, string>
   scales!: Table<WorkScale, string>
+  punches!: Table<Punch, string>
   settings!: Table<SettingsRow, string>
 
   constructor() {
@@ -18,6 +20,12 @@ class EscalaDB extends Dexie {
     this.version(1).stores({
       categories: 'id, kind',
       scales: 'id, startDate, active',
+      settings: 'id'
+    })
+    this.version(2).stores({
+      categories: 'id, kind',
+      scales: 'id, startDate, active',
+      punches: 'date',
       settings: 'id'
     })
   }
@@ -35,7 +43,14 @@ export const DEFAULT_CATEGORIES: Category[] = [
 export async function ensureSeeded(): Promise<void> {
   const hasSettings = await db.settings.get('app')
   if (!hasSettings) {
-    await db.settings.add({ id: 'app', notificationsEnabled: false, onboardingDone: false })
+    await db.settings.add({
+      id: 'app',
+      notificationsEnabled: false,
+      onboardingDone: false,
+      breakMinutes: 60
+    })
+  } else if (hasSettings.breakMinutes === undefined) {
+    await db.settings.put({ ...hasSettings, breakMinutes: 60 })
   }
   const catCount = await db.categories.count()
   if (catCount === 0) {

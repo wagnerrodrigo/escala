@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import type { DayInfo } from '@/types'
-import { categoryForDate, endOfMonth, startOfMonth, statsForRange, todayISO } from '@/engine/schedule'
+import { categoryForDate, endOfMonth, plannedHours, startOfMonth, statsForRange, todayISO } from '@/engine/schedule'
 import { useEscalaStore } from '@/stores/escala'
 import { useShare } from '@/composables/useShare'
 import { monthLabel } from '@/utils/date'
@@ -9,6 +9,7 @@ import CalendarMonth from '@/components/CalendarMonth.vue'
 import LegendBar from '@/components/LegendBar.vue'
 import DayDetailSheet from '@/components/DayDetailSheet.vue'
 import InstallBanner from '@/components/InstallBanner.vue'
+import DayPunchForm from '@/components/DayPunchForm.vue'
 
 const store = useEscalaStore()
 const { exportCalendar } = useShare()
@@ -34,15 +35,24 @@ const todayInfo = computed(() =>
   categoryForDate(today, store.activeScales, store.categories)
 )
 
+const todayPlanned = computed(() => plannedHours(todayInfo.value, store.settings.breakMinutes))
+
 const monthStats = computed(() =>
-  statsForRange(startOfMonth(year.value, month.value), endOfMonth(year.value, month.value), store.activeScales, store.categories)
+  statsForRange(
+    startOfMonth(year.value, month.value),
+    endOfMonth(year.value, month.value),
+    store.activeScales,
+    store.categories,
+    store.settings.breakMinutes
+  )
 )
 
 const workDays = computed(() =>
   monthStats.value.counts.filter((c) => c.category.kind === 'work').reduce((s, c) => s + c.days, 0)
 )
+
 const workHours = computed(() =>
-  monthStats.value.counts.filter((c) => c.category.kind === 'work').reduce((s, c) => s + c.hours, 0)
+  Math.round(monthStats.value.counts.filter((c) => c.category.kind === 'work').reduce((s, c) => s + c.hours, 0) * 10) / 10
 )
 
 const noScales = computed(() => store.loaded && store.activeScales.length === 0)
@@ -70,16 +80,24 @@ async function onExport() {
 
     <template v-else>
       <div class="today-banner card" v-if="todayInfo.category">
-        <span class="dot" :style="{ background: todayInfo.category.color }"></span>
-        <div>
-          <strong>Hoje: {{ todayInfo.category.name }}</strong>
-          <div class="muted" v-if="todayInfo.category.kind === 'work'">{{ todayInfo.category.hoursPerDay }}h de turno</div>
-          <div class="muted" v-else>Dia de descanso</div>
+        <div class="tb-row">
+          <span class="dot" :style="{ background: todayInfo.category.color }"></span>
+          <div>
+            <strong>Hoje: {{ todayInfo.category.name }}</strong>
+            <div class="muted" v-if="todayInfo.category.kind === 'work'">{{ todayPlanned }}h de turno</div>
+            <div class="muted" v-else>Dia de descanso</div>
+          </div>
+          <div class="month-counts">
+            <div><b>{{ workDays }}</b><span>dias trab.</span></div>
+            <div><b>{{ workHours }}h</b><span>planejadas</span></div>
+          </div>
         </div>
-        <div class="month-counts">
-          <div><b>{{ workDays }}</b><span>dias trab.</span></div>
-          <div><b>{{ workHours }}h</b><span>no mês</span></div>
-        </div>
+        <DayPunchForm
+          v-if="todayInfo.category.kind === 'work'"
+          :date="today"
+          :planned-hours="todayPlanned"
+          class="tb-punch"
+        />
       </div>
 
       <div ref="exportArea" class="card calendar-card">
@@ -108,9 +126,17 @@ async function onExport() {
 }
 
 .today-banner {
+  display: block;
+}
+
+.tb-row {
   display: flex;
   align-items: center;
   gap: 10px;
+}
+
+.tb-punch {
+  margin-top: 12px;
 }
 
 .month-counts {

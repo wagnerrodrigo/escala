@@ -7,6 +7,7 @@ const props = defineProps<{
   cell: MonthCell
   info: DayInfo
   today: string
+  hasPunch: boolean
 }>()
 
 const day = computed(() => Number(props.cell.date.slice(8)))
@@ -35,6 +36,7 @@ const shortLabel = computed(() => {
   <button class="day-cell" :class="{ today: isToday, dim: !cell.inMonth }" :style="style" @click="$emit('select')">
     <span class="num">{{ day }}</span>
     <span v-if="shortLabel" class="lbl">{{ shortLabel }}</span>
+    <span v-if="hasPunch" class="tick" aria-hidden="true">✓</span>
   </button>
 </template>
 
@@ -71,5 +73,15 @@ const shortLabel = computed(() => {
 .day-cell.today {
   outline: 2px solid var(--accent);
   outline-offset: -2px;
+}
+
+.tick {
+  position: absolute;
+  top: 2px;
+  right: 4px;
+  font-size: 9px;
+  font-weight: 900;
+  color: var(--accent);
+  line-height: 1;
 }
 </style>

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { endOfMonth, startOfMonth, statsForRange, todayISO } from '@/engine/schedule'
+import { sumWorkedHours } from '@/engine/time'
 import { useEscalaStore } from '@/stores/escala'
 import { monthLabel } from '@/utils/date'
 
@@ -17,26 +18,33 @@ function shift(delta: number) {
   month.value = m
 }
 
+const monthStart = computed(() => startOfMonth(year.value, month.value))
+const monthEnd = computed(() => endOfMonth(year.value, month.value))
+
 const monthStats = computed(() =>
-  statsForRange(
-    startOfMonth(year.value, month.value),
-    endOfMonth(year.value, month.value),
-    store.activeScales,
-    store.categories
-  )
+  statsForRange(monthStart.value, monthEnd.value, store.activeScales, store.categories, store.settings.breakMinutes)
 )
+
+const punchesInRange = computed(() =>
+  store.punches.filter((p) => p.date >= monthStart.value && p.date <= monthEnd.value)
+)
+
+const actualHours = computed(() => sumWorkedHours(punchesInRange.value, store.settings.breakMinutes))
+const deltaHours = computed(() => Math.round((actualHours.value - workHours.value) * 100) / 100)
+const loggedDays = computed(() => punchesInRange.value.length)
 
 const yearStats = computed(() =>
   statsForRange(
     startOfMonth(year.value, 1),
     endOfMonth(year.value, 12),
     store.activeScales,
-    store.categories
+    store.categories,
+    store.settings.breakMinutes
   )
 )
 
 const workDays = computed(() => monthStats.value.counts.filter((c) => c.category.kind === 'work').reduce((s, c) => s + c.days, 0))
-const workHours = computed(() => monthStats.value.counts.filter((c) => c.category.kind === 'work').reduce((s, c) => s + c.hours, 0))
+const workHours = computed(() => Math.round(monthStats.value.counts.filter((c) => c.category.kind === 'work').reduce((s, c) => s + c.hours, 0) * 10) / 10)
 const offDays = computed(() => monthStats.value.counts.filter((c) => c.category.kind === 'off').reduce((s, c) => s + c.days, 0))
 const unclassified = computed(() => monthStats.value.totalDays - monthStats.value.counts.reduce((s, c) => s + c.days, 0))
 
@@ -63,7 +71,17 @@ const maxDays = computed(() => Math.max(1, ...monthStats.value.counts.map((c) =>
         </div>
         <div class="card stat">
           <b class="accent">{{ workHours }}h</b>
-          <span>horas no mês</span>
+          <span>horas planejadas</span>
+        </div>
+        <div class="card stat">
+          <b class="accent">{{ actualHours }}h</b>
+          <span>horas feitas ({{ loggedDays }} dias)</span>
+        </div>
+        <div class="card stat">
+          <b :class="deltaHours > 0 ? 'extra' : deltaHours < 0 ? 'deficit' : 'accent'">
+            {{ deltaHours > 0 ? '+' : '' }}{{ deltaHours }}h
+          </b>
+          <span>extra / déficit</span>
         </div>
         <div class="card stat">
           <b>{{ offDays }}</b>
@@ -74,6 +92,9 @@ const maxDays = computed(() => Math.max(1, ...monthStats.value.counts.map((c) =>
           <span>sem escala</span>
         </div>
       </div>
+      <p v-if="loggedDays === 0" class="muted tip">
+        Dica: toque em um dia de trabalho no calendário para registrar entrada e saída.
+      </p>
 
       <h3 class="section-title">Detalhamento do mês</h3>
       <div class="card">
@@ -129,6 +150,13 @@ const maxDays = computed(() => Math.max(1, ...monthStats.value.counts.map((c) =>
 }
 
 .stat b.accent { color: var(--accent); }
+.stat b.extra { color: #fbbf24; }
+.stat b.deficit { color: var(--danger); }
+
+.tip {
+  margin-top: 10px;
+  text-align: center;
+}
 
 .stat span {
   font-size: 12px;

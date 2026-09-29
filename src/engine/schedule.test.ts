@@ -9,6 +9,7 @@ import {
   endOfMonth,
   monthMatrix,
   pickScale,
+  plannedHours,
   statsForRange
 } from './schedule'
 
@@ -121,5 +122,52 @@ describe('estatísticas', () => {
     expect(stats.totalDays).toBe(4)
     const classified = stats.counts.reduce((s, c) => s + c.days, 0)
     expect(stats.totalDays - classified).toBe(2) // 03 e 04 de janeiro
+  })
+})
+
+describe('jornada da escala (plannedHours)', () => {
+  const sComJornada: WorkScale = {
+    ...s5x2,
+    id: 'esc-jornada',
+    workStart: '07:00',
+    workEnd: '19:00'
+  }
+  const sNoturno: WorkScale = {
+    ...s5x2,
+    id: 'esc-noturno',
+    workStart: '19:00',
+    workEnd: '07:00'
+  }
+
+  it('jornada da escala tem prioridade sobre hoursPerDay da categoria', () => {
+    const info = categoryForDate('2026-01-05', [sComJornada], categories)
+    expect(plannedHours(info, 0)).toBe(12) // categoria diria 8
+  })
+
+  it('desconta o intervalo fixo', () => {
+    const info = categoryForDate('2026-01-05', [sComJornada], categories)
+    expect(plannedHours(info, 60)).toBe(11)
+  })
+
+  it('suporta virada noturna', () => {
+    const info = categoryForDate('2026-01-05', [sNoturno], categories)
+    expect(plannedHours(info, 60)).toBe(11) // 19:00→07:00 = 12h - 1h
+  })
+
+  it('fallback: sem jornada usa hoursPerDay da categoria', () => {
+    const info = categoryForDate('2026-01-05', [s5x2], categories)
+    expect(plannedHours(info, 60)).toBe(8)
+  })
+
+  it('dia de folga tem 0 horas planejadas', () => {
+    const info = categoryForDate('2026-01-10', [sComJornada], categories)
+    expect(plannedHours(info, 60)).toBe(0)
+  })
+
+  it('statsForRange reflete a jornada e o intervalo', () => {
+    const stats = statsForRange('2026-01-05', '2026-01-09', [sComJornada], categories, 60)
+    const trab = stats.counts.find((c) => c.category.id === trabalho.id)
+    expect(trab?.days).toBe(5)
+    expect(trab?.hours).toBe(55) // 5 dias x 11h
   })
 })

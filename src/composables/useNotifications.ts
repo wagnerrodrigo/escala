@@ -1,5 +1,5 @@
 import { useEscalaStore } from '@/stores/escala'
-import { addDays, categoryForDate, todayISO } from '@/engine/schedule'
+import { addDays, categoryForDate, plannedHours, todayISO } from '@/engine/schedule'
 
 async function show(title: string, body: string) {
   const swReg = await navigator.serviceWorker?.getRegistration?.()
@@ -39,7 +39,8 @@ export function useNotifications() {
     const infoTomorrow = categoryForDate(tomorrow, store.activeScales, store.categories)
 
     if (infoToday.category?.kind === 'work') {
-      await show('Hoje é dia de trabalho', `Turno: ${infoToday.category.name} (${infoToday.category.hoursPerDay}h)`)
+      const horas = plannedHours(infoToday, store.settings.breakMinutes)
+      await show('Hoje é dia de trabalho', `Turno: ${infoToday.category.name} (${horas}h)`)
     } else if (infoToday.category?.kind === 'off') {
       await show('Hoje é folga', 'Aproveite o descanso!')
     }

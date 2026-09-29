@@ -1,3 +1,4 @@
+import { workedHours } from './time'
 import type {
   Category,
   CategoryCount,
@@ -99,6 +100,19 @@ export function categoryForDate(
   return { date, category, scale }
 }
 
+/**
+ * Horas planejadas para um dia: jornada da escala (entrada/saída, com desconto
+ * do intervalo) tem prioridade; sem ela, vale o hoursPerDay da categoria.
+ */
+export function plannedHours(info: DayInfo, breakMinutes = 0): number {
+  const { category, scale } = info
+  if (!category) return 0
+  if (category.kind === 'work' && scale?.workStart && scale?.workEnd) {
+    return workedHours(scale.workStart, scale.workEnd, breakMinutes) ?? category.hoursPerDay
+  }
+  return category.hoursPerDay
+}
+
 /** Grade do mês em semanas (domingo a sábado). Células preenchem bordas dos meses vizinhos. */
 export function monthMatrix(year: number, month: number): MonthCell[][] {
   const first = startOfMonth(year, month)
@@ -126,14 +140,16 @@ export function statsForRange(
   from: string,
   to: string,
   scales: WorkScale[],
-  categories: Category[]
+  categories: Category[],
+  breakMinutes = 0
 ): RangeStats {
   const byCategory = new Map<string, CategoryCount>()
   let totalDays = 0
   for (let ms = parseISO(from); ms <= parseISO(to); ms += MS_PER_DAY) {
     const date = toISO(ms)
     totalDays++
-    const { category } = categoryForDate(date, scales, categories)
+    const info = categoryForDate(date, scales, categories)
+    const category = info.category
     if (!category) continue
     let entry = byCategory.get(category.id)
     if (!entry) {
@@ -141,7 +157,7 @@ export function statsForRange(
       byCategory.set(category.id, entry)
     }
     entry.days++
-    entry.hours += category.hoursPerDay
+    entry.hours += plannedHours(info, breakMinutes)
   }
   const counts = [...byCategory.values()].sort((a, b) => b.days - a.days)
   return { from, to, totalDays, counts }

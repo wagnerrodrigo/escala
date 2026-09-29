@@ -3,6 +3,7 @@ import { computed, reactive, ref } from 'vue'
 import type { Category } from '@/types'
 import { db, DEFAULT_CATEGORIES } from '@/db/database'
 import { uid } from '@/engine/schedule'
+import { formatHours } from '@/engine/time'
 import { useEscalaStore } from '@/stores/escala'
 import { useNotifications } from '@/composables/useNotifications'
 
@@ -42,6 +43,14 @@ async function resetCats() {
   for (const c of DEFAULT_CATEGORIES) await store.saveCategory({ ...c })
 }
 
+const breakModel = ref(store.settings.breakMinutes ?? 0)
+
+async function saveBreak() {
+  const minutes = Math.max(0, Math.min(240, Math.round(Number(breakModel.value) || 0)))
+  breakModel.value = minutes
+  await store.updateSettings({ breakMinutes: minutes })
+}
+
 const newCat = reactive({ name: '', kind: 'other' as Category['kind'], color: '#8b5cf6', hoursPerDay: 8 })
 
 async function addCategory() {
@@ -76,7 +85,37 @@ async function wipeAll() {
       <p v-if="permDenied" class="err">Permissão bloqueada no navegador — libere em Configurações do site.</p>
     </div>
 
+    <h3 class="section-title">Jornada de trabalho</h3>
+    <div class="card">
+      <div class="field" style="margin-bottom: 0">
+        <label for="break">Intervalo fixo por dia (minutos)</label>
+        <div class="break-row">
+          <input
+            id="break"
+            v-model.number="breakModel"
+            type="number"
+            min="0"
+            max="240"
+            step="15"
+            @change="saveBreak"
+          />
+          <span class="break-preview">{{ breakModel > 0 ? formatHours(breakModel / 60) : 'sem desconto' }}</span>
+        </div>
+        <p class="muted">Valor descontado de todo dia trabalhado no cálculo de horas feitas. Salve digitando e tocando fora.</p>
+      </div>
+      <div class="break-chips">
+        <button
+          v-for="opt in [0, 15, 30, 60]"
+          :key="opt"
+          class="chip"
+          :class="{ selected: breakModel === opt }"
+          @click="breakModel = opt; saveBreak()"
+        >{{ opt === 0 ? 'sem' : opt + 'min' }}</button>
+      </div>
+    </div>
+
     <h3 class="section-title">Categorias</h3>
+    <p class="muted" style="margin: -4px 0 10px">As <b>horas por dia</b> de uma categoria só são usadas quando a escala não define a jornada (entrada/saída) no cadastro dela.</p>
     <div class="card">
       <div v-for="c in store.categories" :key="c.id" class="cat-row">
         <input
@@ -96,6 +135,7 @@ async function wipeAll() {
           type="number"
           min="0"
           max="24"
+          title="Horas por dia (fallback quando a escala não define jornada)"
           :value="c.hoursPerDay"
           @change="saveCat({ ...c, hoursPerDay: Number(($event.target as HTMLInputElement).value) || 0 })"
         />
@@ -143,6 +183,28 @@ async function wipeAll() {
 
 .add-row select {
   width: 110px;
+}
+
+.break-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.break-row input {
+  width: 120px;
+}
+
+.break-preview {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.break-chips {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
 }
 
 .err {

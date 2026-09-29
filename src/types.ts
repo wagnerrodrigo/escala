@@ -20,6 +20,9 @@ export interface WorkScale {
   pattern: PatternBlock[]
   active: boolean
   createdAt: number
+  /** Jornada de trabalho ("HH:MM"). Opcional — sem ela vale o hoursPerDay da categoria. */
+  workStart?: string
+  workEnd?: string
 }
 
 export interface DayInfo {
@@ -37,6 +40,12 @@ export interface CategoryCount {
   category: Category
   days: number
   hours: number
+}
+
+export interface Punch {
+  date: string
+  entrada: string
+  saida: string
 }
 
 export interface RangeStats {

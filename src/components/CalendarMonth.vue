@@ -33,6 +33,7 @@ const weekdayLabels = ['D', 'S', 'T', 'Q', 'Q', 'S', 'S']
         :cell="entry.cell"
         :info="entry.info"
         :today="today"
+        :has-punch="store.punchByDate.has(entry.cell.date)"
         @select="emit('select', entry.info)"
       />
     </template>
