@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import type { DayInfo } from '@/types'
-import { categoryForDate, endOfMonth, plannedHours, startOfMonth, statsForRange, todayISO } from '@/engine/schedule'
+import { categoryForDate, effectiveShift, endOfMonth, plannedHours, startOfMonth, statsForRange, todayISO } from '@/engine/schedule'
 import { useEscalaStore } from '@/stores/escala'
 import { useShare } from '@/composables/useShare'
 import { monthLabel } from '@/utils/date'
@@ -35,7 +35,13 @@ const todayInfo = computed(() =>
   categoryForDate(today, store.activeScales, store.categories)
 )
 
-const todayPlanned = computed(() => plannedHours(todayInfo.value, store.settings.breakMinutes))
+const todayPlanned = computed(() => plannedHours(todayInfo.value, store.settings.breakMinutes, store.overrides))
+
+const todayHoliday = computed(() => store.holidayFor(today))
+
+const todayShift = computed(() =>
+  effectiveShift(today, todayInfo.value.scale, store.overrides).shift
+)
 
 const monthStats = computed(() =>
   statsForRange(
@@ -43,7 +49,8 @@ const monthStats = computed(() =>
     endOfMonth(year.value, month.value),
     store.activeScales,
     store.categories,
-    store.settings.breakMinutes
+    store.settings.breakMinutes,
+    store.overrides
   )
 )
 
@@ -79,18 +86,28 @@ async function onExport() {
     </div>
 
     <template v-else>
+      <div v-if="todayHoliday && !todayInfo.category" class="card tb-only-holiday">
+        <span class="star">★</span> Hoje é feriado: <b>{{ todayHoliday.name }}</b>
+      </div>
       <div class="today-banner card" v-if="todayInfo.category">
         <div class="tb-row">
           <span class="dot" :style="{ background: todayInfo.category.color }"></span>
           <div>
             <strong>Hoje: {{ todayInfo.category.name }}</strong>
-            <div class="muted" v-if="todayInfo.category.kind === 'work'">{{ todayPlanned }}h de turno</div>
+            <div class="muted" v-if="todayInfo.category.kind === 'work'">
+              <template v-if="todayShift">{{ todayShift.start }}→{{ todayShift.end }} · {{ todayPlanned }}h de turno</template>
+              <template v-else>{{ todayPlanned }}h de turno</template>
+            </div>
             <div class="muted" v-else>Dia de descanso</div>
           </div>
           <div class="month-counts">
             <div><b>{{ workDays }}</b><span>dias trab.</span></div>
             <div><b>{{ workHours }}h</b><span>planejadas</span></div>
           </div>
+        </div>
+        <div v-if="todayHoliday" class="tb-holiday">
+          ★ Hoje também é feriado: <b>{{ todayHoliday.name }}</b>
+          <span class="muted" v-if="todayInfo.category.kind === 'work'">— trabalhando no feriado</span>
         </div>
         <DayPunchForm
           v-if="todayInfo.category.kind === 'work'"
@@ -137,6 +154,26 @@ async function onExport() {
 
 .tb-punch {
   margin-top: 12px;
+}
+
+.tb-holiday {
+  margin-top: 10px;
+  padding: 7px 11px;
+  background: #fbbf241a;
+  border: 1px solid #fbbf2455;
+  border-radius: 10px;
+  font-size: 13px;
+  color: #fcd34d;
+}
+
+.tb-only-holiday {
+  font-size: 14px;
+}
+
+.tb-only-holiday .star {
+  color: #fbbf24;
+  font-size: 16px;
+  margin-right: 4px;
 }
 
 .month-counts {

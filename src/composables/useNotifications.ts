@@ -1,5 +1,5 @@
 import { useEscalaStore } from '@/stores/escala'
-import { addDays, categoryForDate, plannedHours, todayISO } from '@/engine/schedule'
+import { addDays, categoryForDate, effectiveShift, plannedHours, todayISO } from '@/engine/schedule'
 
 async function show(title: string, body: string) {
   const swReg = await navigator.serviceWorker?.getRegistration?.()
@@ -39,13 +39,23 @@ export function useNotifications() {
     const infoTomorrow = categoryForDate(tomorrow, store.activeScales, store.categories)
 
     if (infoToday.category?.kind === 'work') {
-      const horas = plannedHours(infoToday, store.settings.breakMinutes)
-      await show('Hoje é dia de trabalho', `Turno: ${infoToday.category.name} (${horas}h)`)
+      const horas = plannedHours(infoToday, store.settings.breakMinutes, store.overrides)
+      const shift = effectiveShift(today, infoToday.scale, store.overrides).shift
+      const hol = store.holidayFor(today)
+      const corpo = `${shift ? `Turno ${shift.start}→${shift.end}` : `Turno: ${infoToday.category.name} (${horas}h)`}${hol ? ` · feriado: ${hol.name}` : ''}`
+      await show('Hoje é dia de trabalho', corpo)
     } else if (infoToday.category?.kind === 'off') {
-      await show('Hoje é folga', 'Aproveite o descanso!')
+      const hol = store.holidayFor(today)
+      await show('Hoje é folga', hol ? `E é feriado: ${hol.name}. Aproveite!` : 'Aproveite o descanso!')
+    } else if (!infoToday.category) {
+      const hol = store.holidayFor(today)
+      if (hol) await show('Hoje é feriado', hol.name)
     }
     if (infoTomorrow.category?.kind === 'work') {
-      await show('Amanhã você trabalha', `${infoTomorrow.category.name} — prepare o uniforme!`)
+      const shift = effectiveShift(tomorrow, infoTomorrow.scale, store.overrides).shift
+      const hol = store.holidayFor(tomorrow)
+      const corpo = `${shift ? `${shift.start}→${shift.end}` : infoTomorrow.category.name} — prepare o uniforme!${hol ? ` (feriado: ${hol.name})` : ''}`
+      await show('Amanhã você trabalha', corpo)
     }
   }
 

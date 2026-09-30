@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { endOfMonth, startOfMonth, statsForRange, todayISO } from '@/engine/schedule'
+import { addDays, daysBetween, endOfMonth, startOfMonth, statsForRange, todayISO } from '@/engine/schedule'
 import { sumWorkedHours } from '@/engine/time'
 import { useEscalaStore } from '@/stores/escala'
 import { monthLabel } from '@/utils/date'
@@ -22,7 +22,7 @@ const monthStart = computed(() => startOfMonth(year.value, month.value))
 const monthEnd = computed(() => endOfMonth(year.value, month.value))
 
 const monthStats = computed(() =>
-  statsForRange(monthStart.value, monthEnd.value, store.activeScales, store.categories, store.settings.breakMinutes)
+  statsForRange(monthStart.value, monthEnd.value, store.activeScales, store.categories, store.settings.breakMinutes, store.overrides)
 )
 
 const punchesInRange = computed(() =>
@@ -39,7 +39,8 @@ const yearStats = computed(() =>
     endOfMonth(year.value, 12),
     store.activeScales,
     store.categories,
-    store.settings.breakMinutes
+    store.settings.breakMinutes,
+    store.overrides
   )
 )
 
@@ -49,6 +50,17 @@ const offDays = computed(() => monthStats.value.counts.filter((c) => c.category.
 const unclassified = computed(() => monthStats.value.totalDays - monthStats.value.counts.reduce((s, c) => s + c.days, 0))
 
 const maxDays = computed(() => Math.max(1, ...monthStats.value.counts.map((c) => c.days)))
+
+const holidaysInMonth = computed(() => {
+  const names: string[] = []
+  const total = daysBetween(monthStart.value, monthEnd.value) + 1
+  for (let i = 0; i < total; i++) {
+    const date = addDays(monthStart.value, i)
+    const h = store.holidayFor(date)
+    if (h) names.push(`${date.slice(8, 10)} ${h.name}`)
+  }
+  return names
+})
 </script>
 
 <template>
@@ -95,6 +107,13 @@ const maxDays = computed(() => Math.max(1, ...monthStats.value.counts.map((c) =>
       <p v-if="loggedDays === 0" class="muted tip">
         Dica: toque em um dia de trabalho no calendário para registrar entrada e saída.
       </p>
+
+      <div class="card hol-card" v-if="holidaysInMonth.length">
+        <div class="hol-card-title"><span class="star">★</span> Feriados do mês ({{ holidaysInMonth.length }})</div>
+        <div class="hol-chips">
+          <span v-for="h in holidaysInMonth" :key="h" class="hol-chip">{{ h }}</span>
+        </div>
+      </div>
 
       <h3 class="section-title">Detalhamento do mês</h3>
       <div class="card">
@@ -156,6 +175,37 @@ const maxDays = computed(() => Math.max(1, ...monthStats.value.counts.map((c) =>
 .tip {
   margin-top: 10px;
   text-align: center;
+}
+
+.hol-card {
+  margin-top: 12px;
+}
+
+.hol-card-title {
+  font-size: 14px;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+.hol-card-title .star {
+  color: #fbbf24;
+  margin-right: 4px;
+}
+
+.hol-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.hol-chip {
+  font-size: 12px;
+  background: #fbbf241a;
+  border: 1px solid #fbbf2455;
+  color: #fcd34d;
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-weight: 600;
 }
 
 .stat span {

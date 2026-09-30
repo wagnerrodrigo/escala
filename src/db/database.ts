@@ -1,5 +1,5 @@
 import Dexie, { type Table } from 'dexie'
-import type { Category, Punch, WorkScale } from '@/types'
+import type { Category, CustomHoliday, DayOverride, Punch, WorkScale } from '@/types'
 import { uid } from '@/engine/schedule'
 
 export interface SettingsRow {
@@ -7,12 +7,16 @@ export interface SettingsRow {
   notificationsEnabled: boolean
   onboardingDone: boolean
   breakMinutes: number
+  /** Incluir pontos facultativos (Carnaval, Corpus Christi) como feriado no calendário. */
+  showFacultative: boolean
 }
 
 class EscalaDB extends Dexie {
   categories!: Table<Category, string>
   scales!: Table<WorkScale, string>
   punches!: Table<Punch, string>
+  overrides!: Table<DayOverride, string>
+  holidays!: Table<CustomHoliday, string>
   settings!: Table<SettingsRow, string>
 
   constructor() {
@@ -26,6 +30,21 @@ class EscalaDB extends Dexie {
       categories: 'id, kind',
       scales: 'id, startDate, active',
       punches: 'date',
+      settings: 'id'
+    })
+    this.version(3).stores({
+      categories: 'id, kind',
+      scales: 'id, startDate, active',
+      punches: 'date',
+      overrides: 'date',
+      settings: 'id'
+    })
+    this.version(4).stores({
+      categories: 'id, kind',
+      scales: 'id, startDate, active',
+      punches: 'date',
+      overrides: 'date',
+      holidays: 'date',
       settings: 'id'
     })
   }
@@ -47,10 +66,14 @@ export async function ensureSeeded(): Promise<void> {
       id: 'app',
       notificationsEnabled: false,
       onboardingDone: false,
-      breakMinutes: 60
+      breakMinutes: 60,
+      showFacultative: true
     })
-  } else if (hasSettings.breakMinutes === undefined) {
-    await db.settings.put({ ...hasSettings, breakMinutes: 60 })
+  } else {
+    const patch: Partial<SettingsRow> = {}
+    if (hasSettings.breakMinutes === undefined) patch.breakMinutes = 60
+    if (hasSettings.showFacultative === undefined) patch.showFacultative = true
+    if (Object.keys(patch).length) await db.settings.put({ ...hasSettings, ...patch })
   }
   const catCount = await db.categories.count()
   if (catCount === 0) {

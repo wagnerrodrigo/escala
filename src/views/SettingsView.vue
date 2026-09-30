@@ -2,7 +2,7 @@
 import { computed, reactive, ref } from 'vue'
 import type { Category } from '@/types'
 import { db, DEFAULT_CATEGORIES } from '@/db/database'
-import { uid } from '@/engine/schedule'
+import { todayISO, uid } from '@/engine/schedule'
 import { formatHours } from '@/engine/time'
 import { useEscalaStore } from '@/stores/escala'
 import { useNotifications } from '@/composables/useNotifications'
@@ -70,6 +70,22 @@ async function wipeAll() {
   await db.delete()
   location.reload()
 }
+
+const newHoliday = reactive({ date: todayISO(), name: '' })
+
+async function addHoliday() {
+  if (!newHoliday.date || !newHoliday.name.trim()) return
+  await store.saveHoliday({ date: newHoliday.date, name: newHoliday.name.trim() })
+  newHoliday.name = ''
+}
+
+async function removeHoliday(date: string) {
+  if (confirm('Remover este feriado personalizado?')) await store.deleteHoliday(date)
+}
+
+async function toggleFacultative() {
+  await store.updateSettings({ showFacultative: !store.settings.showFacultative })
+}
 </script>
 
 <template>
@@ -111,6 +127,30 @@ async function wipeAll() {
           :class="{ selected: breakModel === opt }"
           @click="breakModel = opt; saveBreak()"
         >{{ opt === 0 ? 'sem' : opt + 'min' }}</button>
+      </div>
+    </div>
+
+    <h3 class="section-title">Feriados</h3>
+    <div class="card">
+      <p class="muted" style="margin-top: 0">
+        Feriados <b>nacionais (BR)</b> aparecem automaticamente no calendário com ★.
+        Feriado não muda sua escala: se você trabalha no feriado, o dia continua marcado como trabalho.
+      </p>
+      <button class="btn small" style="margin-bottom: 12px" @click="toggleFacultative">
+        {{ store.settings.showFacultative ? '✓' : '○' }} Incluir pontos facultativos (Carnaval, Corpus Christi)
+      </button>
+      <div v-if="store.customHolidays.length" class="hol-list">
+        <div v-for="h in store.customHolidays" :key="h.date" class="hol-row">
+          <span class="hol-date">{{ h.date.split('-').reverse().slice(0, 2).join('/') }}</span>
+          <span class="hol-name">{{ h.name }}</span>
+          <button class="icon-btn" @click="removeHoliday(h.date)" aria-label="Remover">×</button>
+        </div>
+      </div>
+      <p v-else class="muted" style="margin-top: 0">Nenhum feriado municipal/estadual cadastrado.</p>
+      <div class="hol-add">
+        <input v-model="newHoliday.date" type="date" class="hol-date-input" />
+        <input v-model="newHoliday.name" class="cat-name" placeholder="Ex.: Aniversário da cidade" @keyup.enter="addHoliday" />
+        <button class="btn small primary" @click="addHoliday">+</button>
       </div>
     </div>
 
@@ -205,6 +245,45 @@ async function wipeAll() {
   display: flex;
   gap: 8px;
   margin-top: 12px;
+}
+
+.hol-list {
+  margin-bottom: 10px;
+}
+
+.hol-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 14px;
+}
+
+.hol-row:last-child {
+  border-bottom: none;
+}
+
+.hol-date {
+  font-weight: 800;
+  color: #fbbf24;
+  width: 52px;
+  flex: none;
+}
+
+.hol-name {
+  flex: 1;
+}
+
+.hol-add {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.hol-date-input {
+  width: 150px;
+  flex: none;
 }
 
 .err {

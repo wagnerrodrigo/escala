@@ -56,6 +56,11 @@ function closeEditor() {
           <span class="status" :class="{ on: s.active }">{{ s.active ? 'ativa' : 'pausada' }}</span>
         </div>
         <div class="muted">{{ summary(s) }} · ciclo {{ cycleLength(s.pattern) }}d · desde {{ ptDate(s.startDate) }}</div>
+        <div v-if="s.shiftRotation?.enabled" class="rot-info">
+          🔄 {{ s.shiftRotation.shifts.map((x) => `${x.start}→${x.end}`).join(' · ') }}
+          ({{ s.shiftRotation.periodDays }}d cada, {{ s.shiftRotation.shifts.length }} turno{{ s.shiftRotation.shifts.length > 1 ? 's' : '' }})
+        </div>
+        <div v-else-if="s.workStart && s.workEnd" class="rot-info">🕐 {{ s.workStart }}→{{ s.workEnd }}</div>
         <div class="scale-actions">
           <button class="btn small" @click="toggleActive(s)">{{ s.active ? 'Pausar' : 'Ativar' }}</button>
           <button class="btn small" @click="editing = s">Editar</button>
@@ -104,6 +109,15 @@ h2 {
   display: flex;
   gap: 8px;
   margin-top: 10px;
+}
+
+.rot-info {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--muted);
+  background: var(--card-2);
+  border-radius: 8px;
+  padding: 6px 10px;
 }
 
 .hint {

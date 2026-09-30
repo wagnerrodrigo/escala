@@ -13,6 +13,18 @@ export interface PatternBlock {
   days: number
 }
 
+export interface ShiftOption {
+  start: string
+  end: string
+}
+
+/** Rotação automática de horário: cada turno vale `periodDays` dias a partir do início da escala. */
+export interface ShiftRotation {
+  enabled: boolean
+  periodDays: number
+  shifts: ShiftOption[]
+}
+
 export interface WorkScale {
   id: string
   name: string
@@ -23,6 +35,21 @@ export interface WorkScale {
   /** Jornada de trabalho ("HH:MM"). Opcional — sem ela vale o hoursPerDay da categoria. */
   workStart?: string
   workEnd?: string
+  /** Mudança automática de turno (opcional). */
+  shiftRotation?: ShiftRotation
+}
+
+/** Horário personalizado de um dia específico (tem prioridade sobre a rotação e o padrão). */
+export interface DayOverride {
+  date: string
+  start: string
+  end: string
+}
+
+/** Feriado municipal/estadual/empresarial cadastrado pelo usuário. */
+export interface CustomHoliday {
+  date: string
+  name: string
 }
 
 export interface DayInfo {

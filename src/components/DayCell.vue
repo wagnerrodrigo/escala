@@ -8,19 +8,27 @@ const props = defineProps<{
   info: DayInfo
   today: string
   hasPunch: boolean
+  hasOverride: boolean
+  holiday?: string | null
 }>()
 
 const day = computed(() => Number(props.cell.date.slice(8)))
 
 const style = computed(() => {
   const cat = props.info.category
+  const stripe = props.holiday ? `inset 0 -4px 0 #fbbf24` : ''
   if (!cat || !props.cell.inMonth) {
-    return { background: 'transparent', color: props.cell.inMonth ? 'inherit' : 'var(--muted)' }
+    return {
+      background: 'transparent',
+      color: props.cell.inMonth ? 'inherit' : 'var(--muted)',
+      boxShadow: stripe || undefined
+    }
   }
+  const ring = `inset 0 0 0 1px ${withAlpha(cat.color, '66')}`
   return {
     background: withAlpha(cat.color, '3d'),
     color: '#f1f5f9',
-    boxShadow: `inset 0 0 0 1px ${withAlpha(cat.color, '66')}`
+    boxShadow: stripe ? `${stripe}, ${ring}` : ring
   }
 })
 
@@ -33,10 +41,18 @@ const shortLabel = computed(() => {
 </script>
 
 <template>
-  <button class="day-cell" :class="{ today: isToday, dim: !cell.inMonth }" :style="style" @click="$emit('select')">
+  <button
+    class="day-cell"
+    :class="{ today: isToday, dim: !cell.inMonth, holiday: Boolean(holiday) }"
+    :style="style"
+    :title="holiday ? `Feriado: ${holiday}` : undefined"
+    @click="$emit('select')"
+  >
     <span class="num">{{ day }}</span>
     <span v-if="shortLabel" class="lbl">{{ shortLabel }}</span>
+    <span v-if="holiday" class="hol" aria-hidden="true">★</span>
     <span v-if="hasPunch" class="tick" aria-hidden="true">✓</span>
+    <span v-if="hasOverride" class="pen" aria-hidden="true">✎</span>
   </button>
 </template>
 
@@ -83,5 +99,25 @@ const shortLabel = computed(() => {
   font-weight: 900;
   color: var(--accent);
   line-height: 1;
+}
+
+.pen {
+  position: absolute;
+  top: 2px;
+  left: 4px;
+  font-size: 9px;
+  font-weight: 900;
+  color: #fbbf24;
+  line-height: 1;
+}
+
+.hol {
+  position: absolute;
+  bottom: 5px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 8px;
+  line-height: 1;
+  color: #fbbf24;
 }
 </style>

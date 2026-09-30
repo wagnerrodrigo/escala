@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
-import type { Category, PatternBlock, WorkScale } from '@/types'
+import type { Category, PatternBlock, ShiftOption, WorkScale } from '@/types'
 import {
   addDays,
   categoryForDate,
+  effectiveShift,
   isValidScale,
   PRESETS,
   todayISO,
@@ -28,6 +29,11 @@ const name = ref(props.initial?.name ?? '')
 const startDate = ref(props.initial?.startDate ?? todayISO())
 const workStart = ref(props.initial?.workStart ?? '')
 const workEnd = ref(props.initial?.workEnd ?? '')
+const rotEnabled = ref(Boolean(props.initial?.shiftRotation?.enabled))
+const rotPeriodDays = ref(props.initial?.shiftRotation?.periodDays ?? 45)
+const rotShifts = reactive<ShiftOption[]>(
+  props.initial?.shiftRotation?.shifts.map((s) => ({ ...s })) ?? [{ start: '', end: '' }]
+)
 const presetId = ref(props.initial ? detectPreset() ?? 'custom' : '5x2')
 const blocks = reactive<PatternBlock[]>(
   props.initial?.pattern.map((b) => ({ ...b })) ?? []
@@ -106,6 +112,56 @@ const jornadaLiquida = computed(() =>
 const jornadaCompleta = computed(() => Boolean(workStart.value && workEnd.value))
 const jornadaParcial = computed(() => Boolean(workStart.value) !== Boolean(workEnd.value))
 
+/* ---------- mudança automática de turno ---------- */
+const ROT_MAX = 3
+
+function enableRotation() {
+  rotEnabled.value = true
+  if (rotShifts.length === 0) rotShifts.push({ start: '', end: '' })
+  if (!rotShifts[0].start && workStart.value) {
+    rotShifts[0].start = workStart.value
+    rotShifts[0].end = workEnd.value
+  }
+}
+
+watch(rotEnabled, (on) => {
+  if (on && rotShifts.length === 1 && !rotShifts[0].start && workStart.value) {
+    rotShifts[0].start = workStart.value
+    rotShifts[0].end = workEnd.value
+  }
+})
+
+function addShift() {
+  if (rotShifts.length >= ROT_MAX) return
+  rotShifts.push({ start: '', end: '' })
+}
+
+function removeShift(i: number) {
+  if (rotShifts.length <= 1) return
+  rotShifts.splice(i, 1)
+}
+
+function setShiftCount(n: number) {
+  const target = Math.min(ROT_MAX, Math.max(1, Math.round(Number(n) || 1)))
+  while (rotShifts.length < target) rotShifts.push({ start: '', end: '' })
+  if (rotShifts.length > target) rotShifts.splice(target)
+}
+
+const rotCountModel = computed({
+  get: () => rotShifts.length,
+  set: (n: number) => setShiftCount(n)
+})
+
+const rotCompleta = computed(
+  () =>
+    rotShifts.length >= 1 &&
+    rotShifts.length <= ROT_MAX &&
+    rotPeriodDays.value >= 1 &&
+    rotShifts.every((s) => s.start && s.end)
+)
+
+const rotTotalCycle = computed(() => rotPeriodDays.value * rotShifts.length)
+
 const workDaysPerCycle = computed(() => {
   const { pattern, newCategories } = resolveDrafts(draftBlocks())
   const cats = new Map([...store.categories, ...newCategories].map((c) => [c.id, c]))
@@ -120,6 +176,16 @@ const horasNoCiclo = computed(() => {
   return Math.round(per * workDaysPerCycle.value * 10) / 10
 })
 
+const draftRotation = computed(() =>
+  rotEnabled.value
+    ? {
+        enabled: true,
+        periodDays: rotPeriodDays.value,
+        shifts: rotShifts.map((s) => ({ start: s.start, end: s.end }))
+      }
+    : undefined
+)
+
 const previewDays = computed(() => {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate.value)) return []
   const { pattern, newCategories } = resolveDrafts(draftBlocks())
@@ -128,12 +194,14 @@ const previewDays = computed(() => {
     id: 'preview', name: 'preview', startDate: startDate.value,
     pattern, active: true, createdAt: 0,
     workStart: workStart.value || undefined,
-    workEnd: workEnd.value || undefined
+    workEnd: workEnd.value || undefined,
+    shiftRotation: draftRotation.value
   }
-  const days: { date: string; category: Category | null }[] = []
+  const days: { date: string; category: Category | null; shift: ShiftOption | null }[] = []
   for (let i = 0; i < 14; i++) {
     const date = addDays(startDate.value, i)
-    days.push({ date, category: categoryForDate(date, [scale], cats).category })
+    const info = categoryForDate(date, [scale], cats)
+    days.push({ date, category: info.category, shift: effectiveShift(date, scale, []).shift })
   }
   return days
 })
@@ -144,6 +212,13 @@ async function save() {
   error.value = ''
   if (jornadaParcial.value) {
     error.value = 'Preencha entrada e saída da jornada (ou deixe as duas vazias).'
+    return
+  }
+  if (rotEnabled.value && !rotCompleta.value) {
+    error.value =
+      rotShifts.length > ROT_MAX
+        ? 'Máximo de 3 turnos na mudança automática.'
+        : 'Preencha entrada e saída de todos os turnos e uma duração válida (mín. 1 dia).'
     return
   }
   const { pattern, newCategories } = resolveDrafts(draftBlocks())
@@ -160,7 +235,8 @@ async function save() {
     active: props.initial?.active ?? true,
     createdAt: props.initial?.createdAt ?? Date.now(),
     workStart: workStart.value || undefined,
-    workEnd: workEnd.value || undefined
+    workEnd: workEnd.value || undefined,
+    shiftRotation: draftRotation.value
   }
   if (!isValidScale(scale)) {
     error.value = 'Preencha a data de início (AAAA-MM-DD) e dias válidos em todos os blocos.'
@@ -249,7 +325,7 @@ function removeRow(i: number) {
             <input v-model="workEnd" type="time" />
           </label>
         </div>
-        <p v-if="jornadaCompleta" class="jornada-result">
+        <p v-if="jornadaCompleta && !rotEnabled" class="jornada-result">
           <b>{{ formatHours(jornadaBruta ?? 0) }}</b> por dia
           <template v-if="store.settings.breakMinutes > 0">
             · com intervalo {{ store.settings.breakMinutes }}min = <b>{{ formatHours(jornadaLiquida ?? 0) }}</b>
@@ -257,7 +333,72 @@ function removeRow(i: number) {
           <template v-if="horasNoCiclo !== null"> · ≈ <b>{{ horasNoCiclo }}h</b> no ciclo ({{ workDaysPerCycle }} dias de trabalho)</template>
         </p>
         <p v-else-if="jornadaParcial" class="warn">Preencha os dois horários ou nenhum.</p>
-        <p v-else class="muted">Sem jornada definida, vale a hora por dia da categoria (fallback).</p>
+        <p v-else-if="!rotEnabled" class="muted">Sem jornada definida, vale a hora por dia da categoria (fallback).</p>
+      </div>
+
+      <div class="field rot">
+        <div class="rot-head">
+          <div>
+            <label style="margin: 0">
+              <input type="checkbox" v-model="rotEnabled" style="width: auto; margin-right: 8px; vertical-align: middle" />
+              Mudança automática de horário
+            </label>
+            <p class="muted" style="margin: 2px 0 0">O turno troque a cada X dias, reiniciando após o último.</p>
+          </div>
+          <button
+            v-if="!rotEnabled"
+            class="btn small"
+            type="button"
+            @click="enableRotation"
+          >Ativar</button>
+        </div>
+
+        <div v-if="rotEnabled" class="rot-body">
+          <div class="grid-2">
+            <div class="field">
+              <label for="rot-count">Quantidade de turnos</label>
+              <input
+                id="rot-count"
+                v-model.number="rotCountModel"
+                type="number"
+                min="1"
+                max="3"
+                step="1"
+              />
+            </div>
+            <div class="field">
+              <label for="rot-days">Duração de cada turno (dias)</label>
+              <input id="rot-days" v-model.number="rotPeriodDays" type="number" min="1" step="1" />
+            </div>
+          </div>
+
+          <label>Horários por turno</label>
+          <div v-for="(s, i) in rotShifts" :key="i" class="rot-row">
+            <span class="rot-num">{{ i + 1 }}º</span>
+            <input v-model="s.start" type="time" aria-label="Entrada" />
+            <span class="arrow-in">→</span>
+            <input v-model="s.end" type="time" aria-label="Saída" />
+            <button
+              class="icon-btn"
+              type="button"
+              :disabled="rotShifts.length <= 1"
+              @click="removeShift(i)"
+              aria-label="Remover turno"
+            >×</button>
+          </div>
+          <button
+            class="btn small"
+            type="button"
+            :disabled="rotShifts.length >= ROT_MAX"
+            @click="addShift"
+          >+ Turno{{ rotShifts.length >= ROT_MAX ? ' (máx. 3)' : '' }}</button>
+
+          <p v-if="rotCompleta" class="jornada-result">
+            Ciclo completo: <b>{{ rotTotalCycle }} dias</b>
+            ({{ rotShifts.length }} turno{{ rotShifts.length > 1 ? 's' : '' }} × {{ rotPeriodDays }} dias) · depois volta ao 1º turno.
+          </p>
+          <p v-else class="warn">Preencha todos os turnos (entrada e saída) e a duração.</p>
+        </div>
       </div>
 
       <div class="field" v-if="previewDays.length">
@@ -268,7 +409,7 @@ function removeRow(i: number) {
             :key="d.date"
             class="p-day"
             :style="d.category ? { background: d.category.color } : { background: 'var(--card-2)' }"
-            :title="`${d.date} — ${d.category?.name ?? 'sem escala'}`"
+            :title="`${d.date} — ${d.category?.name ?? 'sem escala'}${d.shift ? ` ${d.shift.start}→${d.shift.end}` : ''}`"
           >{{ Number(d.date.slice(8)) }}</span>
         </div>
       </div>
@@ -394,6 +535,57 @@ function removeRow(i: number) {
   font-size: 13px;
   color: #fbbf24;
   font-weight: 600;
+}
+
+.rot {
+  background: var(--card-2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px;
+}
+
+.rot-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.rot-head label {
+  color: var(--text);
+  font-size: 14px;
+}
+
+.rot-head .btn {
+  margin-left: auto;
+}
+
+.rot-body {
+  margin-top: 12px;
+}
+
+.rot-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.rot-row input[type='time'] {
+  flex: 1;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.rot-num {
+  flex: none;
+  width: 26px;
+  font-weight: 800;
+  color: var(--accent);
+  font-size: 14px;
+}
+
+.arrow-in {
+  color: var(--muted);
 }
 
 .preview {

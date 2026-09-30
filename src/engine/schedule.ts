@@ -4,9 +4,12 @@ import type {
   CategoryCount,
   CategoryKind,
   DayInfo,
+  DayOverride,
   MonthCell,
   PatternBlock,
   RangeStats,
+  ShiftOption,
+  ShiftRotation,
   WorkScale
 } from '@/types'
 
@@ -100,16 +103,64 @@ export function categoryForDate(
   return { date, category, scale }
 }
 
+const HHMM = /^\d{1,2}:\d{2}$/
+
+/** Configuração de rotação completa e dentro dos limites (1 a 3 turnos). */
+export function isRotationConfigValid(rot?: ShiftRotation): rot is ShiftRotation {
+  if (!rot || !rot.enabled) return false
+  if (!Number.isInteger(rot.periodDays) || rot.periodDays < 1) return false
+  if (rot.shifts.length < 1 || rot.shifts.length > 3) return false
+  return rot.shifts.every((s) => HHMM.test(s.start) && HHMM.test(s.end))
+}
+
+/** Turno da rotação automática vigente na data (cicla após o último). Null se desativada/inválida. */
+export function rotationShift(scale: WorkScale, date: string): ShiftOption | null {
+  const rot = scale.shiftRotation
+  if (!isRotationConfigValid(rot)) return null
+  const offset = daysBetween(scale.startDate, date)
+  if (offset < 0) return null
+  const idx = Math.floor(offset / rot.periodDays) % rot.shifts.length
+  return rot.shifts[idx]
+}
+
+export type ShiftSource = 'override' | 'rotation' | 'default' | null
+
 /**
- * Horas planejadas para um dia: jornada da escala (entrada/saída, com desconto
- * do intervalo) tem prioridade; sem ela, vale o hoursPerDay da categoria.
+ * Horário efetivo do dia, por precedência:
+ * 1) ajuste individual do calendário, 2) rotação automática, 3) padrão da escala.
  */
-export function plannedHours(info: DayInfo, breakMinutes = 0): number {
+export function effectiveShift(
+  date: string,
+  scale: WorkScale | null,
+  overrides: DayOverride[] = []
+): { shift: ShiftOption | null; source: ShiftSource } {
+  const ov = overrides.find((o) => o.date === date)
+  if (ov && HHMM.test(ov.start) && HHMM.test(ov.end)) {
+    return { shift: { start: ov.start, end: ov.end }, source: 'override' }
+  }
+  if (!scale) return { shift: null, source: null }
+  const rot = rotationShift(scale, date)
+  if (rot) return { shift: rot, source: 'rotation' }
+  if (scale.workStart && scale.workEnd) {
+    return { shift: { start: scale.workStart, end: scale.workEnd }, source: 'default' }
+  }
+  return { shift: null, source: null }
+}
+
+/**
+ * Horas planejadas para um dia: segue a precedência do horário efetivo
+ * (ajuste do dia > rotação > padrão da escala); sem nada, usa o hoursPerDay da categoria.
+ */
+export function plannedHours(
+  info: DayInfo,
+  breakMinutes = 0,
+  overrides: DayOverride[] = []
+): number {
   const { category, scale } = info
   if (!category) return 0
-  if (category.kind === 'work' && scale?.workStart && scale?.workEnd) {
-    return workedHours(scale.workStart, scale.workEnd, breakMinutes) ?? category.hoursPerDay
-  }
+  if (category.kind !== 'work') return category.hoursPerDay
+  const { shift } = effectiveShift(info.date, scale, overrides)
+  if (shift) return workedHours(shift.start, shift.end, breakMinutes) ?? category.hoursPerDay
   return category.hoursPerDay
 }
 
@@ -141,7 +192,8 @@ export function statsForRange(
   to: string,
   scales: WorkScale[],
   categories: Category[],
-  breakMinutes = 0
+  breakMinutes = 0,
+  overrides: DayOverride[] = []
 ): RangeStats {
   const byCategory = new Map<string, CategoryCount>()
   let totalDays = 0
@@ -157,7 +209,7 @@ export function statsForRange(
       byCategory.set(category.id, entry)
     }
     entry.days++
-    entry.hours += plannedHours(info, breakMinutes)
+    entry.hours += plannedHours(info, breakMinutes, overrides)
   }
   const counts = [...byCategory.values()].sort((a, b) => b.days - a.days)
   return { from, to, totalDays, counts }

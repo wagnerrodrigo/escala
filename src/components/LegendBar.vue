@@ -10,6 +10,10 @@ const store = useEscalaStore()
       <i class="dot" :style="{ background: c.color }"></i>
       {{ c.name }}
     </span>
+    <span class="item holiday">
+      <b class="star">★</b>
+      Feriado (automático)
+    </span>
   </div>
 </template>
 
@@ -28,5 +32,10 @@ const store = useEscalaStore()
   font-size: 12px;
   color: var(--muted);
   font-weight: 600;
+}
+
+.item.holiday .star {
+  color: #fbbf24;
+  font-size: 11px;
 }
 </style>

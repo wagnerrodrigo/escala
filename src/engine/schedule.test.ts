@@ -6,10 +6,13 @@ import {
   categoryForDate,
   cycleLength,
   daysBetween,
+  effectiveShift,
   endOfMonth,
+  isRotationConfigValid,
   monthMatrix,
   pickScale,
   plannedHours,
+  rotationShift,
   statsForRange
 } from './schedule'
 
@@ -169,5 +172,121 @@ describe('jornada da escala (plannedHours)', () => {
     const trab = stats.counts.find((c) => c.category.id === trabalho.id)
     expect(trab?.days).toBe(5)
     expect(trab?.hours).toBe(55) // 5 dias x 11h
+  })
+})
+
+describe('rotação automática de turno', () => {
+  const rot = {
+    enabled: true,
+    periodDays: 45,
+    shifts: [
+      { start: '14:00', end: '22:30' },
+      { start: '22:00', end: '05:30' },
+      { start: '05:30', end: '14:00' }
+    ]
+  }
+  const sRot: WorkScale = {
+    ...s5x2,
+    id: 'esc-rot',
+    startDate: '2026-01-01',
+    workStart: '14:00',
+    workEnd: '22:30',
+    shiftRotation: rot
+  }
+
+  it('aplica cada turno por 45 dias e cicla após o último', () => {
+    expect(rotationShift(sRot, '2026-01-01')?.start).toBe('14:00') // offset 0
+    expect(rotationShift(sRot, addDays('2026-01-01', 44))?.start).toBe('14:00')
+    expect(rotationShift(sRot, addDays('2026-01-01', 45))?.start).toBe('22:00') // turno 2
+    expect(rotationShift(sRot, addDays('2026-01-01', 89))?.start).toBe('22:00')
+    expect(rotationShift(sRot, addDays('2026-01-01', 90))?.start).toBe('05:30') // turno 3
+    expect(rotationShift(sRot, addDays('2026-01-01', 134))?.start).toBe('05:30')
+    expect(rotationShift(sRot, addDays('2026-01-01', 135))?.start).toBe('14:00') // reinicia o ciclo
+    expect(rotationShift(sRot, '2025-12-31')).toBeNull() // antes do início
+  })
+
+  it('horas planejadas acompanham o turno vigente', () => {
+    const d1 = categoryForDate('2026-01-01', [sRot], categories) // offset 0 = trabalho
+    expect(plannedHours(d1, 60)).toBe(7.5) // 14:00→22:30 = 8h30 - 1h de intervalo
+    const dia46 = categoryForDate(addDays('2026-01-01', 45), [sRot], categories)
+    expect(plannedHours(dia46, 0)).toBe(7.5) // 22:00→05:30 = 7h30, sem intervalo
+  })
+
+  it('rotação incompleta ou com 4 turnos é ignorada (cai no padrão)', () => {
+    const incompleta: WorkScale = {
+      ...sRot,
+      id: 'r1',
+      shiftRotation: { enabled: true, periodDays: 45, shifts: [{ start: '08:00', end: '' }] }
+    }
+    expect(isRotationConfigValid(incompleta.shiftRotation)).toBe(false)
+    expect(rotationShift(incompleta, '2026-01-01')).toBeNull()
+    const info = categoryForDate('2026-01-01', [incompleta], categories)
+    expect(plannedHours(info, 0)).toBe(8.5) // usa o workStart/workEnd da escala
+
+    const quatroTurnos: WorkScale = {
+      ...sRot,
+      id: 'r2',
+      shiftRotation: { enabled: true, periodDays: 45, shifts: [...rot.shifts, { start: '06:00', end: '14:00' }] }
+    }
+    expect(isRotationConfigValid(quatroTurnos.shiftRotation)).toBe(false)
+  })
+
+  it('rotação com 1 ou 2 turnos é válida e funciona', () => {
+    const dois: WorkScale = {
+      ...sRot,
+      id: 'r3',
+      shiftRotation: { enabled: true, periodDays: 10, shifts: rot.shifts.slice(0, 2) }
+    }
+    expect(isRotationConfigValid(dois.shiftRotation)).toBe(true)
+    expect(rotationShift(dois, addDays('2026-01-01', 12))?.start).toBe('22:00')
+    expect(rotationShift(dois, addDays('2026-01-01', 25))?.start).toBe('14:00')
+  })
+})
+
+describe('ajuste individual do dia (override)', () => {
+  const sPadrao: WorkScale = {
+    ...s5x2,
+    id: 'esc-padrao',
+    startDate: '2026-01-01',
+    workStart: '14:00',
+    workEnd: '22:30'
+  }
+  const sRot2: WorkScale = {
+    ...s5x2,
+    id: 'esc-rot2',
+    startDate: '2026-01-01',
+    workStart: '14:00',
+    workEnd: '22:30',
+    shiftRotation: {
+      enabled: true,
+      periodDays: 45,
+      shifts: [
+        { start: '14:00', end: '22:30' },
+        { start: '22:00', end: '05:30' }
+      ]
+    }
+  }
+
+  it('override vence a rotação e o padrão', () => {
+    const overrides = [{ date: '2026-01-03', start: '06:00', end: '10:00' }]
+    const eff = effectiveShift('2026-01-03', sRot2, overrides)
+    expect(eff.source).toBe('override')
+    const info = categoryForDate('2026-01-03', [sRot2], categories)
+    expect(plannedHours(info, 0, overrides)).toBe(4)
+  })
+
+  it('fontes automáticas: rotação e padrão da escala', () => {
+    expect(effectiveShift('2026-01-01', sRot2, []).source).toBe('rotation')
+    expect(effectiveShift('2026-01-01', sPadrao, []).source).toBe('default')
+    expect(effectiveShift('2026-01-01', s5x2, []).source).toBeNull() // sem jornada nem rotação
+    expect(effectiveShift('2026-01-01', null, []).source).toBeNull()
+  })
+
+  it('statsForRange aplica override apenas no dia certo', () => {
+    const overrides = [{ date: '2026-01-05', start: '08:00', end: '12:00' }]
+    // 05 trab (override 4h) · 06-07 folga · 08 trab (rotação 14:00→22:30 = 8,5h)
+    const stats = statsForRange('2026-01-05', '2026-01-08', [sRot2], categories, 0, overrides)
+    const trab = stats.counts.find((c) => c.category.id === trabalho.id)
+    expect(trab?.hours).toBe(12.5)
   })
 })
