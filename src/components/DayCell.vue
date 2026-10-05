@@ -9,6 +9,7 @@ const props = defineProps<{
   today: string
   hasPunch: boolean
   hasOverride: boolean
+  hasCategoryOverride: boolean
   holiday?: string | null
 }>()
 
@@ -45,7 +46,7 @@ const shortLabel = computed(() => {
     class="day-cell"
     :class="{ today: isToday, dim: !cell.inMonth, holiday: Boolean(holiday) }"
     :style="style"
-    :title="holiday ? `Feriado: ${holiday}` : undefined"
+    :title="[hasCategoryOverride ? 'Folga extra' : '', holiday ? `Feriado: ${holiday}` : ''].filter(Boolean).join(' · ') || undefined"
     @click="$emit('select')"
   >
     <span class="num">{{ day }}</span>
@@ -53,6 +54,7 @@ const shortLabel = computed(() => {
     <span v-if="holiday" class="hol" aria-hidden="true">★</span>
     <span v-if="hasPunch" class="tick" aria-hidden="true">✓</span>
     <span v-if="hasOverride" class="pen" aria-hidden="true">✎</span>
+    <span v-if="hasCategoryOverride" class="extra" aria-hidden="true">+</span>
   </button>
 </template>
 
@@ -108,6 +110,16 @@ const shortLabel = computed(() => {
   font-size: 9px;
   font-weight: 900;
   color: #fbbf24;
+  line-height: 1;
+}
+
+.extra {
+  position: absolute;
+  bottom: 3px;
+  right: 5px;
+  font-size: 10px;
+  font-weight: 900;
+  color: #38bdf8;
   line-height: 1;
 }
 

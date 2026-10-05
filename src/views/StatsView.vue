@@ -22,7 +22,7 @@ const monthStart = computed(() => startOfMonth(year.value, month.value))
 const monthEnd = computed(() => endOfMonth(year.value, month.value))
 
 const monthStats = computed(() =>
-  statsForRange(monthStart.value, monthEnd.value, store.activeScales, store.categories, store.settings.breakMinutes, store.overrides)
+  statsForRange(monthStart.value, monthEnd.value, store.activeScales, store.categories, store.settings.breakMinutes, store.overrides, store.categoryOverrides)
 )
 
 const punchesInRange = computed(() =>
@@ -40,7 +40,8 @@ const yearStats = computed(() =>
     store.activeScales,
     store.categories,
     store.settings.breakMinutes,
-    store.overrides
+    store.overrides,
+    store.categoryOverrides
   )
 )
 

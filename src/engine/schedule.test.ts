@@ -50,6 +50,16 @@ describe('datas', () => {
   })
 })
 
+describe('folga extra', () => {
+  it('substitui somente a categoria do dia e não desloca o ciclo', () => {
+    const categoryOverrides = [{ date: '2026-01-07', categoryId: folga.id }]
+
+    expect(categoryForDate('2026-01-07', [s5x2], categories, categoryOverrides).category?.id).toBe(folga.id)
+    expect(categoryForDate('2026-01-08', [s5x2], categories, categoryOverrides).category?.id).toBe(trabalho.id)
+    expect(plannedHours(categoryForDate('2026-01-07', [s5x2], categories, categoryOverrides))).toBe(0)
+  })
+})
+
 describe('motor de padrão', () => {
   it('5×2: dias 0-4 trabalho, 5-6 folga, ciclo reinicia', () => {
     expect(categoryForDate('2026-01-05', [s5x2], categories).category?.id).toBe(trabalho.id)

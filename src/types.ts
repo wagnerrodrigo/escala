@@ -46,6 +46,12 @@ export interface DayOverride {
   end: string
 }
 
+/** Categoria personalizada de um dia específico, com prioridade sobre a escala. */
+export interface DayCategoryOverride {
+  date: string
+  categoryId: string
+}
+
 /** Feriado municipal/estadual/empresarial cadastrado pelo usuário. */
 export interface CustomHoliday {
   date: string

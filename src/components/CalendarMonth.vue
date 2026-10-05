@@ -15,7 +15,7 @@ const weeks = computed(() =>
   monthMatrix(props.year, props.month).map((week) =>
     week.map((cell) => ({
       cell,
-      info: categoryForDate(cell.date, store.activeScales, store.categories),
+      info: categoryForDate(cell.date, store.activeScales, store.categories, store.categoryOverrides),
       holiday: store.holidayFor(cell.date)?.name ?? null
     }))
   )
@@ -36,6 +36,7 @@ const weekdayLabels = ['D', 'S', 'T', 'Q', 'Q', 'S', 'S']
         :today="today"
         :has-punch="store.punchByDate.has(entry.cell.date)"
         :has-override="store.overrideByDate.has(entry.cell.date)"
+        :has-category-override="store.categoryOverrideByDate.has(entry.cell.date)"
         :holiday="entry.holiday"
         @select="emit('select', entry.info)"
       />

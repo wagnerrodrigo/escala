@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
-import type { Category, CustomHoliday, DayOverride, Punch, WorkScale } from '@/types'
+import type { Category, CustomHoliday, DayCategoryOverride, DayOverride, Punch, WorkScale } from '@/types'
 import { resolveHoliday, type ResolvedHoliday } from '@/engine/holidays'
 import {
   db,
@@ -14,6 +14,7 @@ export const useEscalaStore = defineStore('escala', () => {
   const scales = ref<WorkScale[]>([])
   const punches = ref<Punch[]>([])
   const overrides = ref<DayOverride[]>([])
+  const categoryOverrides = ref<DayCategoryOverride[]>([])
   const customHolidays = ref<CustomHoliday[]>([])
   const settings = ref<SettingsRow>({
     id: 'app',
@@ -35,6 +36,12 @@ export const useEscalaStore = defineStore('escala', () => {
   const overrideByDate = computed(() => {
     const map = new Map<string, DayOverride>()
     for (const o of overrides.value) map.set(o.date, o)
+    return map
+  })
+
+  const categoryOverrideByDate = computed(() => {
+    const map = new Map<string, DayCategoryOverride>()
+    for (const o of categoryOverrides.value) map.set(o.date, o)
     return map
   })
 
@@ -62,6 +69,7 @@ export const useEscalaStore = defineStore('escala', () => {
     scales.value = await db.scales.orderBy('startDate').toArray()
     punches.value = await db.punches.orderBy('date').toArray()
     overrides.value = await db.overrides.orderBy('date').toArray()
+    categoryOverrides.value = await db.categoryOverrides.orderBy('date').toArray()
     customHolidays.value = await db.holidays.orderBy('date').toArray()
     const row = await db.settings.get('app')
     if (row) settings.value = row
@@ -104,6 +112,16 @@ export const useEscalaStore = defineStore('escala', () => {
     overrides.value = await db.overrides.orderBy('date').toArray()
   }
 
+  async function saveCategoryOverride(override: DayCategoryOverride) {
+    await db.categoryOverrides.put(override)
+    categoryOverrides.value = await db.categoryOverrides.orderBy('date').toArray()
+  }
+
+  async function deleteCategoryOverride(date: string) {
+    await db.categoryOverrides.delete(date)
+    categoryOverrides.value = await db.categoryOverrides.orderBy('date').toArray()
+  }
+
   async function saveHoliday(holiday: CustomHoliday) {
     await db.holidays.put(holiday)
     customHolidays.value = await db.holidays.orderBy('date').toArray()
@@ -134,12 +152,14 @@ export const useEscalaStore = defineStore('escala', () => {
     scales,
     punches,
     overrides,
+    categoryOverrides,
     customHolidays,
     settings,
     loaded,
     activeScales,
     punchByDate,
     overrideByDate,
+    categoryOverrideByDate,
     categoryById,
     customHolidayMap,
     holidayFor,
@@ -152,6 +172,8 @@ export const useEscalaStore = defineStore('escala', () => {
     deletePunch,
     saveOverride,
     deleteOverride,
+    saveCategoryOverride,
+    deleteCategoryOverride,
     saveHoliday,
     deleteHoliday,
     updateSettings,

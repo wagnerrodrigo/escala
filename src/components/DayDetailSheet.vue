@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { computed, reactive, watch } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import type { DayInfo } from '@/types'
-import { cycleLength, effectiveShift, plannedHours } from '@/engine/schedule'
+import { categoryForDate, cycleLength, effectiveShift, plannedHours } from '@/engine/schedule'
 import { formatHours } from '@/engine/time'
 import { formatLongDate } from '@/utils/date'
 import { useEscalaStore } from '@/stores/escala'
@@ -11,13 +11,22 @@ const props = defineProps<{ info: DayInfo }>()
 defineEmits<{ close: [] }>()
 
 const store = useEscalaStore()
-const cat = computed(() => props.info.category)
+const currentInfo = computed(() =>
+  categoryForDate(props.info.date, store.activeScales, store.categories, store.categoryOverrides)
+)
+const cat = computed(() => currentInfo.value.category)
 const holiday = computed(() => store.holidayFor(props.info.date))
 const planejadas = computed(() =>
-  plannedHours(props.info, store.settings.breakMinutes, store.overrides)
+  plannedHours(currentInfo.value, store.settings.breakMinutes, store.overrides)
 )
 
-const efetivo = computed(() => effectiveShift(props.info.date, props.info.scale, store.overrides))
+const efetivo = computed(() => effectiveShift(props.info.date, currentInfo.value.scale, store.overrides))
+
+const offCategory = computed(() => store.categories.find((category) => category.kind === 'off') ?? null)
+const categoryOverride = computed(() => store.categoryOverrideByDate.get(props.info.date) ?? null)
+const isExtraOff = computed(() => categoryOverride.value?.categoryId === offCategory.value?.id)
+const holidayName = ref('')
+const showHolidayForm = ref(false)
 
 const sourceLabel = computed(() => {
   switch (efetivo.value.source) {
@@ -41,6 +50,10 @@ function syncFields() {
 syncFields()
 watch(efetivo, syncFields)
 
+watch(holiday, (value) => {
+  holidayName.value = value?.source === 'custom' ? value.name : ''
+}, { immediate: true })
+
 const canSave = computed(() => Boolean(hourFields.start && hourFields.end))
 const isOverride = computed(() => efetivo.value.source === 'override')
 
@@ -52,6 +65,29 @@ async function salvarAlteracao() {
 async function restaurar() {
   await store.deleteOverride(props.info.date)
 }
+
+async function marcarFolga() {
+  if (!offCategory.value) return
+  await store.saveCategoryOverride({ date: props.info.date, categoryId: offCategory.value.id })
+}
+
+async function restaurarCategoria() {
+  await store.deleteCategoryOverride(props.info.date)
+}
+
+async function salvarFeriado() {
+  const name = holidayName.value.trim()
+  if (!name) return
+  await store.saveHoliday({ date: props.info.date, name })
+  showHolidayForm.value = false
+}
+
+async function removerFeriado() {
+  if (holiday.value?.source !== 'custom') return
+  await store.deleteHoliday(props.info.date)
+  holidayName.value = ''
+  showHolidayForm.value = false
+}
 </script>
 
 <template>
@@ -62,15 +98,37 @@ async function restaurar() {
         ★ Feriado: {{ holiday.name }}
         <span class="kind-tag">{{ holiday.source === 'custom' ? 'personalizado' : holiday.kind.replace('-', ' ') }}</span>
       </div>
+      <div class="day-actions">
+        <button
+          v-if="offCategory && !isExtraOff && cat?.kind !== 'off'"
+          class="btn small"
+          @click="marcarFolga"
+        >
+          🛌 Marcar como folga extra
+        </button>
+        <button v-if="isExtraOff" class="btn small" @click="restaurarCategoria">
+          Restaurar categoria da escala
+        </button>
+        <button class="btn small" @click="showHolidayForm = !showHolidayForm">
+          {{ holiday?.source === 'custom' ? 'Editar feriado' : 'Cadastrar feriado municipal' }}
+        </button>
+      </div>
+      <div v-if="showHolidayForm" class="holiday-form">
+        <input v-model="holidayName" class="holiday-input" placeholder="Nome do feriado" @keyup.enter="salvarFeriado" />
+        <div class="holiday-form-actions">
+          <button class="btn small primary" :disabled="!holidayName.trim()" @click="salvarFeriado">Salvar</button>
+          <button v-if="holiday?.source === 'custom'" class="btn small danger" @click="removerFeriado">Remover</button>
+        </div>
+      </div>
       <template v-if="cat">
         <div class="row">
           <span class="dot" :style="{ background: cat.color }"></span>
           <strong class="name">{{ cat.name }}</strong>
           <span v-if="cat.kind === 'work' && planejadas > 0" class="hours">{{ formatHours(planejadas) }} de turno</span>
         </div>
-        <p class="muted" v-if="info.scale">
-          Escala {{ info.scale.name }} — ciclo de {{ cycleLength(info.scale.pattern) }} dias
-          (início em {{ info.scale.startDate.split('-').reverse().slice(0, 2).join('/') }})
+        <p class="muted" v-if="currentInfo.scale">
+          Escala {{ currentInfo.scale.name }} — ciclo de {{ cycleLength(currentInfo.scale.pattern) }} dias
+          (início em {{ currentInfo.scale.startDate.split('-').reverse().slice(0, 2).join('/') }})
         </p>
 
         <div class="shift-box" v-if="cat.kind === 'work'">
@@ -100,7 +158,7 @@ async function restaurar() {
         />
       </template>
       <p v-else class="muted">
-        {{ info.scale ? 'Dia não coberto por esta escala.' : 'Nenhuma escala ativa para este dia.' }}
+        {{ currentInfo.scale ? 'Dia não coberto por esta escala.' : 'Nenhuma escala ativa para este dia.' }}
       </p>
       <button class="btn" style="width: 100%; margin-top: 10px" @click="$emit('close')">Fechar</button>
     </div>
@@ -126,6 +184,32 @@ async function restaurar() {
   font-size: 13px;
   font-weight: 700;
   margin-bottom: 12px;
+}
+
+.day-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.holiday-form {
+  background: var(--card-2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px;
+  margin-bottom: 12px;
+}
+
+.holiday-input {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.holiday-form-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
 }
 
 .kind-tag {

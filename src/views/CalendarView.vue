@@ -32,7 +32,7 @@ function shift(delta: number) {
 }
 
 const todayInfo = computed(() =>
-  categoryForDate(today, store.activeScales, store.categories)
+  categoryForDate(today, store.activeScales, store.categories, store.categoryOverrides)
 )
 
 const todayPlanned = computed(() => plannedHours(todayInfo.value, store.settings.breakMinutes, store.overrides))
@@ -50,7 +50,8 @@ const monthStats = computed(() =>
     store.activeScales,
     store.categories,
     store.settings.breakMinutes,
-    store.overrides
+    store.overrides,
+    store.categoryOverrides
   )
 )
 

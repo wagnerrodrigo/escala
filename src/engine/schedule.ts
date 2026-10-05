@@ -3,6 +3,7 @@ import type {
   Category,
   CategoryCount,
   CategoryKind,
+  DayCategoryOverride,
   DayInfo,
   DayOverride,
   MonthCell,
@@ -93,13 +94,17 @@ export function blockForScaleAt(scale: WorkScale, date: string): PatternBlock | 
 export function categoryForDate(
   date: string,
   scales: WorkScale[],
-  categories: Category[]
+  categories: Category[],
+  categoryOverrides: DayCategoryOverride[] = []
 ): DayInfo {
   const scale = pickScale(scales, date)
-  if (!scale) return { date, category: null, scale: null }
-  const block = blockForScaleAt(scale, date)
-  if (!block) return { date, category: null, scale }
-  const category = categories.find((c) => c.id === block.categoryId) ?? null
+  let category: Category | null = null
+  if (scale) {
+    const block = blockForScaleAt(scale, date)
+    category = block ? categories.find((c) => c.id === block.categoryId) ?? null : null
+  }
+  const override = categoryOverrides.find((o) => o.date === date)
+  if (override) category = categories.find((c) => c.id === override.categoryId) ?? category
   return { date, category, scale }
 }
 
@@ -193,14 +198,15 @@ export function statsForRange(
   scales: WorkScale[],
   categories: Category[],
   breakMinutes = 0,
-  overrides: DayOverride[] = []
+  overrides: DayOverride[] = [],
+  categoryOverrides: DayCategoryOverride[] = []
 ): RangeStats {
   const byCategory = new Map<string, CategoryCount>()
   let totalDays = 0
   for (let ms = parseISO(from); ms <= parseISO(to); ms += MS_PER_DAY) {
     const date = toISO(ms)
     totalDays++
-    const info = categoryForDate(date, scales, categories)
+    const info = categoryForDate(date, scales, categories, categoryOverrides)
     const category = info.category
     if (!category) continue
     let entry = byCategory.get(category.id)

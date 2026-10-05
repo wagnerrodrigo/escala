@@ -35,8 +35,8 @@ export function useNotifications() {
 
     const today = todayISO()
     const tomorrow = addDays(today, 1)
-    const infoToday = categoryForDate(today, store.activeScales, store.categories)
-    const infoTomorrow = categoryForDate(tomorrow, store.activeScales, store.categories)
+    const infoToday = categoryForDate(today, store.activeScales, store.categories, store.categoryOverrides)
+    const infoTomorrow = categoryForDate(tomorrow, store.activeScales, store.categories, store.categoryOverrides)
 
     if (infoToday.category?.kind === 'work') {
       const horas = plannedHours(infoToday, store.settings.breakMinutes, store.overrides)

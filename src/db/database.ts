@@ -1,5 +1,5 @@
 import Dexie, { type Table } from 'dexie'
-import type { Category, CustomHoliday, DayOverride, Punch, WorkScale } from '@/types'
+import type { Category, CustomHoliday, DayCategoryOverride, DayOverride, Punch, WorkScale } from '@/types'
 import { uid } from '@/engine/schedule'
 
 export interface SettingsRow {
@@ -16,6 +16,7 @@ class EscalaDB extends Dexie {
   scales!: Table<WorkScale, string>
   punches!: Table<Punch, string>
   overrides!: Table<DayOverride, string>
+  categoryOverrides!: Table<DayCategoryOverride, string>
   holidays!: Table<CustomHoliday, string>
   settings!: Table<SettingsRow, string>
 
@@ -44,6 +45,15 @@ class EscalaDB extends Dexie {
       scales: 'id, startDate, active',
       punches: 'date',
       overrides: 'date',
+      holidays: 'date',
+      settings: 'id'
+    })
+    this.version(5).stores({
+      categories: 'id, kind',
+      scales: 'id, startDate, active',
+      punches: 'date',
+      overrides: 'date',
+      categoryOverrides: 'date',
       holidays: 'date',
       settings: 'id'
     })
