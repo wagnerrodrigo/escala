@@ -2,8 +2,9 @@
 import { computed, ref, watch } from 'vue'
 import { formatDelta, formatHours, workedHours } from '@/engine/time'
 import { useEscalaStore } from '@/stores/escala'
+import type { ShiftOption } from '@/types'
 
-const props = defineProps<{ date: string; plannedHours: number }>()
+const props = defineProps<{ date: string; plannedHours: number; plannedShift?: ShiftOption | null }>()
 const emit = defineEmits<{ saved: [] }>()
 
 const store = useEscalaStore()
@@ -49,6 +50,12 @@ async function remove() {
   saida.value = ''
   emit('saved')
 }
+
+function usePlannedShift() {
+  if (!props.plannedShift) return
+  entrada.value = props.plannedShift.start
+  saida.value = props.plannedShift.end
+}
 </script>
 
 <template>
@@ -81,6 +88,9 @@ async function remove() {
     </div>
 
     <div class="actions">
+      <button class="btn small" :disabled="!plannedShift" @click="usePlannedShift">
+        Usar previsto
+      </button>
       <button class="btn small primary" :disabled="!entrada || !saida" @click="save">
         {{ existing ? 'Atualizar' : 'Salvar' }}
       </button>

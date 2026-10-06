@@ -154,6 +154,7 @@ async function removerFeriado() {
           v-if="cat.kind === 'work'"
           :date="info.date"
           :planned-hours="planejadas"
+          :planned-shift="efetivo.shift"
           class="punch-slot"
         />
       </template>
