@@ -128,13 +128,14 @@ function usePlannedShift() {
 }
 
 .fields {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
   gap: 8px;
 }
 
 .f {
-  flex: 1;
+  min-width: 0;
   margin: 0;
   display: flex;
   flex-direction: column;
@@ -153,6 +154,8 @@ function usePlannedShift() {
 input[type='time'] {
   font-size: 16px;
   font-weight: 700;
+  min-width: 0;
+  width: 100%;
 }
 
 .result {

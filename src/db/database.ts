@@ -9,6 +9,8 @@ export interface SettingsRow {
   breakMinutes: number
   /** Incluir pontos facultativos (Carnaval, Corpus Christi) como feriado no calendário. */
   showFacultative: boolean
+  /** Data (ISO) em que a notificação do dia foi enviada pela última vez. */
+  lastNotifiedDate?: string
 }
 
 class EscalaDB extends Dexie {

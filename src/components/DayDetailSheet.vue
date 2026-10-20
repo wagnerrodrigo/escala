@@ -287,6 +287,7 @@ async function removerFeriado() {
 
 .shift-fields input {
   flex: 1;
+  min-width: 0;
   font-size: 16px;
   font-weight: 700;
 }

@@ -1,5 +1,5 @@
 import { useEscalaStore } from '@/stores/escala'
-import { addDays, categoryForDate, effectiveShift, plannedHours, todayISO } from '@/engine/schedule'
+import { categoryForDate, effectiveShift, plannedHours, todayISO } from '@/engine/schedule'
 
 async function show(title: string, body: string) {
   const swReg = await navigator.serviceWorker?.getRegistration?.()
@@ -28,35 +28,30 @@ export function useNotifications() {
     await store.updateSettings({ notificationsEnabled: false })
   }
 
-  /** Avisa sobre o dia de hoje e se amanhã há plantão. Executa ao abrir o app. */
+  /** Notifica uma vez por dia, na primeira abertura: hoje é dia de trabalho ou folga. */
   async function checkDuty() {
     if (!('Notification' in window)) return
     if (!store.settings.notificationsEnabled || Notification.permission !== 'granted') return
 
     const today = todayISO()
-    const tomorrow = addDays(today, 1)
-    const infoToday = categoryForDate(today, store.activeScales, store.categories, store.categoryOverrides)
-    const infoTomorrow = categoryForDate(tomorrow, store.activeScales, store.categories, store.categoryOverrides)
+    if (store.settings.lastNotifiedDate === today) return
 
-    if (infoToday.category?.kind === 'work') {
-      const horas = plannedHours(infoToday, store.settings.breakMinutes, store.overrides)
-      const shift = effectiveShift(today, infoToday.scale, store.overrides).shift
+    const info = categoryForDate(today, store.activeScales, store.categories, store.categoryOverrides)
+
+    if (info.category?.kind === 'work') {
+      const horas = plannedHours(info, store.settings.breakMinutes, store.overrides)
+      const shift = effectiveShift(today, info.scale, store.overrides).shift
       const hol = store.holidayFor(today)
-      const corpo = `${shift ? `Turno ${shift.start}→${shift.end}` : `Turno: ${infoToday.category.name} (${horas}h)`}${hol ? ` · feriado: ${hol.name}` : ''}`
+      const corpo = `${shift ? `Turno ${shift.start}→${shift.end}` : `Turno: ${info.category.name} (${horas}h)`}${hol ? ` · feriado: ${hol.name}` : ''}`
       await show('Hoje é dia de trabalho', corpo)
-    } else if (infoToday.category?.kind === 'off') {
+    } else if (info.category?.kind === 'off') {
       const hol = store.holidayFor(today)
       await show('Hoje é folga', hol ? `E é feriado: ${hol.name}. Aproveite!` : 'Aproveite o descanso!')
-    } else if (!infoToday.category) {
-      const hol = store.holidayFor(today)
-      if (hol) await show('Hoje é feriado', hol.name)
+    } else {
+      return
     }
-    if (infoTomorrow.category?.kind === 'work') {
-      const shift = effectiveShift(tomorrow, infoTomorrow.scale, store.overrides).shift
-      const hol = store.holidayFor(tomorrow)
-      const corpo = `${shift ? `${shift.start}→${shift.end}` : infoTomorrow.category.name} — prepare o uniforme!${hol ? ` (feriado: ${hol.name})` : ''}`
-      await show('Amanhã você trabalha', corpo)
-    }
+
+    await store.updateSettings({ lastNotifiedDate: today })
   }
 
   return { requestPermission, disable, checkDuty }
